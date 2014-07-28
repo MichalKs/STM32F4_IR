@@ -51,7 +51,7 @@
 									<listOptionValue builtIn="false" value="/home/mik/Source/workspace_stm32/STM32F4_IR/include"/>
 									<listOptionValue builtIn="false" value="/home/mik/Source/workspace_stm32/STM32F4_IR/libs/CMSIS/include"/>
 									<listOptionValue builtIn="false" value="/home/mik/Source/workspace_stm32/STM32F4_IR/libs/StdPeriph/include"/>
-									<listOptionValue builtIn="false" value="../app/inc"/>
+									<listOptionValue builtIn="false" value="/home/mik/git/STM32F4_IR/STM32F4_IR/app/inc"/>
 								</option>
 								<option id="ilg.gnuarmeclipse.managedbuild.cross.option.assembler.defs.1407399480" name="Defined symbols (-D)" superClass="ilg.gnuarmeclipse.managedbuild.cross.option.assembler.defs" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="STM32F40_41xxx"/>
@@ -62,9 +62,9 @@
 							</tool>
 							<tool id="ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.955155103" name="Cross ARM C Compiler" superClass="ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler">
 								<option id="ilg.gnuarmeclipse.managedbuild.cross.option.c.compiler.include.paths.662877364" name="Include paths (-I)" superClass="ilg.gnuarmeclipse.managedbuild.cross.option.c.compiler.include.paths" useByScannerDiscovery="false" valueType="includePath">
-									<listOptionValue builtIn="false" value="/home/mik/Source/workspace_stm32/STM32F4_IR/include"/>
-									<listOptionValue builtIn="false" value="/home/mik/Source/workspace_stm32/STM32F4_IR/libs/CMSIS/include"/>
-									<listOptionValue builtIn="false" value="/home/mik/Source/workspace_stm32/STM32F4_IR/libs/StdPeriph/include"/>
+									<listOptionValue builtIn="false" value="../include"/>
+									<listOptionValue builtIn="false" value="../libs/CMSIS/include"/>
+									<listOptionValue builtIn="false" value="../libs/StdPeriph/include"/>
 									<listOptionValue builtIn="false" value="../app/inc"/>
 								</option>
 								<option id="ilg.gnuarmeclipse.managedbuild.cross.option.c.compiler.std.2087399652" name="Language standard" superClass="ilg.gnuarmeclipse.managedbuild.cross.option.c.compiler.std" useByScannerDiscovery="true" value="ilg.gnuarmeclipse.managedbuild.cross.option.c.compiler.std.gnu11" valueType="enumerated"/>
