@@ -26,17 +26,14 @@
 #include <utils.h>
 #include <ir.h>
 
-
-
-
 void PWM_Config(uint8_t deadTime);
+
 #define SYSTICK_FREQ 1000 ///< Frequency of the SysTick.
 
 void softTimerCallback(void);
 
 
-int main(void)
-{
+int main(void) {
 	
 	UART2_Init(); // Initialize USART2 (for printf)
 	TIMER_Init(SYSTICK_FREQ); // Initialize timer
@@ -71,11 +68,11 @@ void softTimerCallback(void) {
 	//printf("Test string sent from STM32F4!!!\r\n"); // Print test string
 	uint8_t j;
 
-	for (j = 0; j < 30; j++) {
-	  printf("%u ", pulses[j]);
-	}
-	printf("\r\n");
-	i=0;
+//	for (j = 0; j < 30; j++) {
+//	  printf("%u ", pulses[j]);
+//	}
+//	printf("\r\n");
+//	i=0;
 
 }
 
