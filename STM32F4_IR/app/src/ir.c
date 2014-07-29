@@ -18,20 +18,18 @@
 #include <ir.h>
 #include <stdio.h>
 
-__IO uint16_t IC1Value = 0;
-__IO uint16_t IC2Value = 0;
-__IO uint16_t DutyCycle = 0;
-__IO uint32_t Frequency = 0;
+static uint8_t address;
+static uint8_t command;
+static uint8_t toggle;
+static uint8_t rxFlag;
 
-unsigned int pulses[30];
-uint8_t i;
+static uint16_t frame;   ///< The whole frame
+static uint8_t pulseCount; ///< Counts the number of half bits
+static uint8_t bitCount;   ///< Counts the number of bits received
 
-uint8_t address;
-uint8_t commands;
-uint8_t toggle;
-uint8_t rxFlag;
-uint8_t frame[12];
-
+/**
+ *
+ */
 void IR_Init(void) {
 
   GPIO_InitTypeDef GPIO_InitStructure;
@@ -94,10 +92,6 @@ void IR_Init(void) {
   TIM_SelectSlaveMode(TIM4, TIM_SlaveMode_Reset);
   TIM_SelectMasterSlaveMode(TIM4,TIM_MasterSlaveMode_Enable);
   TIM_UpdateRequestConfig(TIM4,  TIM_UpdateSource_Regular);
-  //  TIM4->CCR1 = 0;
-  //  TIM4->CCR2 = 0;
-  /* TIM enable counter */
-
 
   /* Enable the CC2 Interrupt Request */
   TIM_ClearFlag(TIM4, TIM_FLAG_Update);
@@ -108,19 +102,19 @@ void IR_Init(void) {
   // Reset to 0 is on every falling edge
 }
 
-static uint16_t pulseCount; // count number of half bits
-static uint16_t bitCount;
+
 /**
  *
  * @param pulseWidth
- * @param edge 0 - falling, 1 - rising
+ * @param edge 0 - low pulse (rising edge), 1 - high pulse (falling edge)
  */
 void IR_RxData(uint16_t pulseWidth, uint8_t edge) {
 
 
   if (pulseCount == 0 && edge == 1) {
     pulseCount++; // new frame
-    bitCount = 0;
+    bitCount = 13;
+    frame = 0;
     return;
   } else if (pulseCount == 0 && edge == 0) {
     // frame should start with falling edge
@@ -148,7 +142,7 @@ void IR_RxData(uint16_t pulseWidth, uint8_t edge) {
       bitCount = 0;
       return;
     }
-    frame[bitCount++] = 1;
+    frame |= (1<<bitCount--);
     pulseCount++;
   } else if (pulseCount == 2) {
     if (pulseWidth > 1000) {
@@ -157,9 +151,9 @@ void IR_RxData(uint16_t pulseWidth, uint8_t edge) {
       bitCount = 0;
       return;
     }
-    frame[bitCount++] = 1;
+    frame |= (1<<bitCount--);
     pulseCount++;
-  } else if ((bitCount >= 2) && (bitCount < 14)) {
+  } else if ((bitCount >= 0) && (bitCount < 12)) {
     // if pulseWidth bigger 1700us then two half bits were transmitted
     // so increment pulseCount
     if (pulseWidth > 1000) {
@@ -168,109 +162,63 @@ void IR_RxData(uint16_t pulseWidth, uint8_t edge) {
     // even pulseCounts mean middle of bit
     if (pulseCount % 2 == 0) {
       if (edge == 1) {
-        frame[bitCount++] = 1;
+        frame |= (1<<bitCount--);
       } else {
-        frame[bitCount++] = 0;
+        bitCount--;
       }
     }
-    if (bitCount == 14) {
-      printf("Frame received: ");
-      uint8_t i;
-      for (i = 0; i < 14; i++) {
-        printf("%d ", frame[i]);
-      }
-      printf("\r\n");
-      bitCount = 0;
+    if (bitCount == 0xff) {
+
+      bitCount = 13;
       pulseCount = 0;
+
+      rxFlag++;
+      toggle = (frame>>11) & (0x0001);
+      address = (frame>>6) & (0x001f);
+      command = (frame>>0) & (0x003f);
+      printf("Frame received: %04x. Toggle = %d Command = %d Address = %d\r\n",
+          frame, toggle, command, address);
       return;
     }
     pulseCount++;
-  } else {
-    bitCount = 0;
-    pulseCount = 0;
   }
 
 }
 
+/**
+ * @brief Timer 4 Handler
+ *
+ * @details Used for decoding RC4 frames using PWMI (input capture) measurement.
+ */
 void TIM4_IRQHandler(void) {
 
+  static uint16_t high = 0;  // high pulse duration
+  static uint16_t low = 0;   // low pulse duration
 
+  // IC1 Interrupt
+  if((TIM_GetFlagStatus(TIM4, TIM_FLAG_CC1) != RESET)) {
 
-  /* IC1 Interrupt*/
-  if((TIM_GetFlagStatus(TIM4, TIM_FLAG_CC1) != RESET))
-  {
     TIM_ClearFlag(TIM4, TIM_FLAG_CC1);
-    /* Get the Input Capture value */
-    IC1Value = TIM_GetCapture1(TIM4);
-//    pulses[i++]= IC1Value;
+    // Get the Input Capture value
+    low = TIM_GetCapture1(TIM4);
 
-    IR_RxData(IC1Value, 0); // high pulse
+    IR_RxData(low, 0); // decode low pulse
 
-    /* RC5 */
-//    IR_RC5_DataSampling(ICValue2 - ICValue1, 0);
-  }  /* IC2 Interrupt */
-  else  if((TIM_GetFlagStatus(TIM4, TIM_FLAG_CC2) != RESET))
-  {
+  } else  if((TIM_GetFlagStatus(TIM4, TIM_FLAG_CC2) != RESET)) {
+
     TIM_ClearFlag(TIM4, TIM_FLAG_CC2);
-    /* Get the Input Capture value */
-    IC2Value = TIM_GetCapture2(TIM4);
-//    pulses[i++]= IC2Value - IC1Value;
+    // Get the Input Capture value
+    high = TIM_GetCapture2(TIM4);
 
-    IR_RxData(IC2Value - IC1Value, 1); // low pulse
-//    IR_RC5_DataSampling(ICValue1 , 1);
-  }
-  /* Checks whether the IR_TIM flag is set or not.*/
-  else if ((TIM_GetFlagStatus(TIM4, TIM_FLAG_Update) != RESET))
-  {
-    /* Clears the IR_TIM's pending flags*/
+    IR_RxData(high - low, 1); // decode high pulse
+
+  } else if ((TIM_GetFlagStatus(TIM4, TIM_FLAG_Update) != RESET)) {
+    // Clears the IR_TIM's pending flags
     TIM_ClearFlag(TIM4, TIM_FLAG_Update);
 
-    bitCount = 0;
+    // If timeout occurs, clear frame state.
+    bitCount = 13;
     pulseCount = 0;
-//    printf("Reset\r\n");
-//    IR_RC5_ResetPacket();
   }
-//  if (i == 30) {
-//    i = 0;
-//  }
 
 }
-
-//void TIM4_IRQHandler(void)
-//{
-//
-//
-//  RCC_ClocksTypeDef RCC_Clocks;
-//  RCC_GetClocksFreq(&RCC_Clocks);
-//
-//  /* Clear TIM4 Capture compare interrupt pending bit */
-//  TIM_ClearITPendingBit(TIM4, TIM_IT_CC2);
-//
-//  /* Get the Input Capture value */
-//  IC2Value = TIM_GetCapture2(TIM4); // period
-//  IC1Value = TIM_GetCapture1(TIM4); // low pulse
-//
-//  pulses[i++]= IC1Value;
-//  if (i == 14) {
-//    i = 0;
-//  }
-
-//  if (IC2Value != 0)
-//  {
-//    /* Duty cycle computation */
-//    DutyCycle = ( IC1Value* 100) / IC2Value;
-//
-//    /* Frequency computation
-//       TIM4 counter clock = (RCC_Clocks.HCLK_Frequency)/2 */
-//
-//    Frequency = (RCC_Clocks.HCLK_Frequency)/2 / IC2Value;
-//  }
-//  else
-//  {
-//    DutyCycle = 0;
-//    Frequency = 0;
-//  }
-//}
-
-
-
