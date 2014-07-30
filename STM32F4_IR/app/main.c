@@ -1,6 +1,6 @@
 /**
  * @file: 	main.c
- * @brief:	SD Card test
+ * @brief:	IR test
  * @date: 	9 kwi 2014
  * @author: Michal Ksiezopolski
  *
@@ -35,6 +35,7 @@ int main(void) {
 	UART2_Init(); // Initialize USART2 (for printf)
 	TIMER_Init(SYSTICK_FREQ); // Initialize timer
 
+	// Add a soft timer
 	int8_t timerID = TIMER_AddSoftTimer(1000,softTimerCallback);
 	TIMER_StartSoftTimer(timerID);
 
@@ -48,13 +49,15 @@ int main(void) {
 
 	printf("Starting program\r\n"); // Print a string to UART2
 
-	IR_Init();
+	IR_Init(); // Initialize IR signals decoding
 
 	while (1) {
 		TIMER_SoftTimersUpdate();
 	}
 }
-
+/**
+ * @brief Callback function called on every soft timer overflow
+ */
 void softTimerCallback(void) {
 
 	LED_Toggle(LED0); // Toggle LED

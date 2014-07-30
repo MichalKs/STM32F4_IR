@@ -1,6 +1,6 @@
 /**
  * @file: 	ir.h
- * @brief:	   
+ * @brief:	Infrared decoding functions
  * @date: 	27 lip 2014
  * @author: Michal Ksiezopolski
  * 
@@ -18,8 +18,20 @@
 #ifndef IR_H_
 #define IR_H_
 
-#include <stm32f4xx.h>
+/**
+ * @defgroup  IR IR
+ * @brief     Infrared decoding functions
+ */
+
+/**
+ * @addtogroup IR
+ * @{
+ */
 
 void IR_Init(void);
+
+/**
+ * @}
+ */
 
 #endif /* IR_H_ */
