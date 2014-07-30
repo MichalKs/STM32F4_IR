@@ -1,0 +1,14 @@
+
+
+To run this example on a STM32F407 microcontroller:
+
+1) connect a photo module (I used TSOP31236), wich decodes IR remote signals
+to pin PB7. The photo module needs to be filtered with
+a 4.7uF capacitor (check datasheet) and connected to VCC through
+a 100ohm resistor.
+
+TSOP31236 uses a supply voltage of 5V, however PB7 is 5V tolerant,
+so this isn't a problem.
+
+2) connect PA2 (UART TX pin) to a UART-USB converter and open a 
+serial port terminal (for example, GTK Term). 
