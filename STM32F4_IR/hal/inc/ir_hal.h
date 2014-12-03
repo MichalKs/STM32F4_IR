@@ -19,5 +19,10 @@
 #define INC_IR_HAL_H_
 
 
+void IR_HAL_Init(
+    void (*readDataCb)(uint16_t pulseWidth, uint8_t edge),
+    void (*resetFrameCb)(void),
+    uint32_t timeout);
+
 
 #endif /* INC_IR_HAL_H_ */

@@ -18,6 +18,8 @@
 #ifndef IR_H_
 #define IR_H_
 
+#include <inttypes.h>
+
 /**
  * @defgroup  IR IR
  * @brief     Infrared decoding functions

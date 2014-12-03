@@ -4,6 +4,10 @@
  * @date:   27 lip 2014
  * @author: Michal Ksiezopolski
  * 
+ * @details For now this function only supports RC5 decoding.
+ *
+ * TODO Add other IR formats.
+ *
  * @verbatim
  * Copyright (c) 2014 Michal Ksiezopolski.
  * All rights reserved. This program and the 
@@ -17,7 +21,19 @@
 
 #include <ir.h>
 #include <stdio.h>
-#include <stm32f4xx.h>
+#include <ir_hal.h>
+
+#ifndef DEBUG
+  #define DEBUG
+#endif
+
+#ifdef DEBUG
+  #define print(str, args...) printf(""str"%s",##args,"")
+  #define println(str, args...) printf("IR--> "str"%s",##args,"\r\n")
+#else
+  #define print(str, args...) (void)0
+  #define println(str, args...) (void)0
+#endif
 
 /**
  * @defgroup  IR IR
@@ -29,13 +45,19 @@
  * @{
  */
 
-#define RC5
-//#define SIRC
+void IR_ResetFrame(void);
+void IR_RxData(uint16_t pulseWidth, uint8_t edge);
 
-#define RC5_TIMEOUT   3600 ///< Timeout value in us of RC5 frame
-#define RC5_MAX_BIT   1900 ///< Max bit length in us
-#define RC5_MIN_HALFBIT  700 ///< Min half bit value in us
-#define RC5_MAX_HALFBIT  1000 ///< Max half bit value in us
+
+#define RC5   0 ///< RC5 coding
+#define SIRC  1 ///< SIRC coding
+
+#define IR_CODING RC5 ///< Default coding for library
+
+#define RC5_TIMEOUT       3600 ///< Timeout value in us of RC5 frame
+#define RC5_MAX_BIT       1900 ///< Max bit length in us
+#define RC5_MIN_HALFBIT   700  ///< Min half bit value in us
+#define RC5_MAX_HALFBIT   1000 ///< Max half bit value in us
 
 static uint8_t address; ///< Remote address
 static uint8_t command; ///< Remote command
@@ -71,88 +93,36 @@ typedef enum {
 } IR_RC5_Commands;
 
 /**
- * @brief Initialize timers and pins for decoding IR signals.
+ * @brief Initialize decoding IR signals.
+ *
+ * @details Sets up callback functions for lower layers
+ * and the frame timeout time.
+ * After the timeout is over the frame is reset.
+ * If an edge is detected on the line then information about
+ * it is transported to the higher layer via the read data callback.
  */
 void IR_Init(void) {
 
-  GPIO_InitTypeDef GPIO_InitStructure;
-  NVIC_InitTypeDef NVIC_InitStructure;
-
-  // TIM4 clock enable
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
-
-  // GPIOB clock enable
-  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
-
-  // TIM4 IC2 configuration (PB7)
-  GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_7;
-  GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AF;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
-  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_UP ;
-  GPIO_Init(GPIOB, &GPIO_InitStructure);
-
-  // Connect TIM pin to AF2
-  GPIO_PinAFConfig(GPIOB, GPIO_PinSource7, GPIO_AF_TIM4);
-
-  // Time Base configuration
-  // Timer clock is 84MHz
-  // Update flag will cause timeout of frame
-  TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
-  TIM_TimeBaseStructure.TIM_Prescaler = 84 - 1; // 1 tick = 1 us
-  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
-  TIM_TimeBaseStructure.TIM_Period = RC5_TIMEOUT;
-  TIM_TimeBaseStructure.TIM_ClockDivision = 0;
-  TIM_TimeBaseStructure.TIM_RepetitionCounter = 0;
-
-  TIM_TimeBaseInit(TIM4, &TIM_TimeBaseStructure);
-
-  // Enable the TIM4 global Interrupt
-  NVIC_InitStructure.NVIC_IRQChannel = TIM4_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
-  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-  NVIC_Init(&NVIC_InitStructure);
-
-  /* TIM4 configuration: PWM Input mode for measuring IR signal pulses.
-  The external signal is connected to TIM4 CH2 pin (PB7).
-  The falling edge is used as active edge - IC counters will be reset at falling edge
-  The TIM4 CCR2 is used to compute the period (from which we derive high pulse value)
-  The TIM4 CCR1 is used to compute the low pulse value */
-
-  TIM_ICInitTypeDef  TIM_ICInitStructure;
-  TIM_ICInitStructure.TIM_Channel     = TIM_Channel_2;
-  TIM_ICInitStructure.TIM_ICPolarity  = TIM_ICPolarity_Falling; // Falling edge triggers CC2
-  TIM_ICInitStructure.TIM_ICSelection = TIM_ICSelection_DirectTI;
-  TIM_ICInitStructure.TIM_ICPrescaler = TIM_ICPSC_DIV1; // count every edge
-  TIM_ICInitStructure.TIM_ICFilter    = 0x0;
-
-  TIM_PWMIConfig(TIM4, &TIM_ICInitStructure);
-
-  // Select the TIM4 Input Trigger: TI2FP2
-  TIM_SelectInputTrigger(TIM4, TIM_TS_TI2FP2);
-
-  // Select the slave Mode: Reset Mode
-  TIM_SelectSlaveMode(TIM4, TIM_SlaveMode_Reset);
-  TIM_SelectMasterSlaveMode(TIM4,TIM_MasterSlaveMode_Enable);
-  TIM_UpdateRequestConfig(TIM4, TIM_UpdateSource_Regular);
-
-  TIM_ClearFlag(TIM4, TIM_FLAG_Update);
-  TIM_ITConfig(TIM4, TIM_IT_Update, ENABLE); // update interrupt for frame timeout
-  TIM_ITConfig(TIM4, TIM_IT_CC1, ENABLE); // falling edge - period value
-  TIM_ITConfig(TIM4, TIM_IT_CC2, ENABLE); // rising edge - low pulse value
-  TIM_Cmd(TIM4, ENABLE);
+  IR_HAL_Init(IR_RxData, IR_ResetFrame, RC5_TIMEOUT);
 }
 
 
 /**
  * @brief Decode RC5 data
- * @param pulseWidth Width of the received pulse
- * @param edge 0 - low pulse (rising edge), 1 - period (falling edge)
+ *
+ * @details This function is called by the lower layer every time
+ * a transition on the IR data line occurs (rising or falling edge).
+ * The period is the time between two falling edges (the IR data
+ * line is pulled up in idle state).
+ *
+ * @param pulseWidth Width of the received pulse in us.
+ * @param edge 0 - low pulse (rising edge), 1 - high pulse (falling edge)
  */
 void IR_RxData(uint16_t pulseWidth, uint8_t edge) {
 
   // frame starts with falling edge
+  // since the data line is normally high (pullup)
+  // frame visualization: -----|_
   if (pulseCount == 0 && edge == 1) {
     pulseCount++;
     bitCount = 13;
@@ -160,44 +130,44 @@ void IR_RxData(uint16_t pulseWidth, uint8_t edge) {
     return;
   } else if (pulseCount == 0 && edge == 0) {
     // frame should start with falling edge
-    printf("Frame error - wrong edge\r\n");
-    pulseCount = 0;
-    bitCount = 13;
+    println("Frame error - wrong edge");
+    IR_ResetFrame();
     return;
   }
 
   // Pulse width was irrelevant at first edge.
   // It is relevant for all following edges
   if ((pulseWidth > RC5_MAX_BIT) || (pulseWidth < RC5_MIN_HALFBIT)) {
-    printf("Frame error - wrong pulse width\r\n");
-    pulseCount = 0;
-    bitCount = 13;
+    println("Frame error - wrong pulse width");
+    IR_ResetFrame();
     return;
   }
 
+  // frame visualization: -----|_|-
   if (pulseCount == 1) {
     // pulseWidth has to be 800 us - first two bits are a one
     if (pulseWidth > RC5_MAX_HALFBIT) {
-      printf("Frame error - wrong start bits, probably not RC5\r\n");
-      pulseCount = 0;
-      bitCount = 13;
+      println("Frame error - wrong start bits, probably not RC5");
+      IR_ResetFrame();
       return;
     }
-    frame |= (1<<bitCount--); // First bit is a one
+
+    frame |= (1<<bitCount--); // First bit (put as MSB) is a one
     pulseCount++;
+
+  // frame visualization: -----|_|-|_
   } else if (pulseCount == 2) {
     // pulseWidth has to be 800 us - first two bits are a one
     if (pulseWidth > RC5_MAX_HALFBIT) {
-      printf("Frame error - wrong start bits, probably not RC5\r\n");
-      pulseCount = 0;
-      bitCount = 13;
+      println("Frame error - wrong start bits, probably not RC5");
+      IR_ResetFrame();
       return;
     }
     frame |= (1<<bitCount--); // Second bit is a one
     pulseCount++;
   } else if ((bitCount >= 0) && (bitCount < 12)) { // for bits 11 to 0
     // if pulseWidth is about 1700us then two half bits were transmitted
-    // so increment pulseCount
+    // so increment pulseCount one more time
     if (pulseWidth > RC5_MAX_HALFBIT) {
       pulseCount++;
     }
@@ -214,59 +184,29 @@ void IR_RxData(uint16_t pulseWidth, uint8_t edge) {
     // when bit zero is written, bitCount underflows to 0xff (8 bits)
     if (bitCount == 0xff) {
 
-      bitCount = 13; // reset frame
-      pulseCount = 0;
+      IR_ResetFrame(); // reset frame
 
       rxCount++; // add received frame
       toggle = (frame>>11) & (0x0001); // toggle bit is 3rd bit
       address = (frame>>6) & (0x001f); // address is 5 bits
       command = (frame>>0) & (0x003f); // command is 6 bits
-      printf("Frame received: %04x. Toggle = %d Command = %d Address = %d\r\n",
+      println("Frame received: %04x. Toggle = %d Command = %d Address = %d",
           frame, toggle, command, address);
       return;
     }
+
     pulseCount++; // increment pulse count value
   }
 
 }
-
 /**
- * @brief Timer 4 Handler
- *
- * @details Used for decoding RC4 frames using PWMI (input capture) measurement.
+ * @brief Resets frame after timeout.
  */
-void TIM4_IRQHandler(void) {
-
-  static uint16_t high = 0;  // high pulse duration
-  static uint16_t low = 0;   // low pulse duration
-
-  // IC1 Interrupt
-  if((TIM_GetFlagStatus(TIM4, TIM_FLAG_CC1) != RESET)) {
-
-    TIM_ClearFlag(TIM4, TIM_FLAG_CC1);
-    // Get the Input Capture value
-    low = TIM_GetCapture1(TIM4);
-
-    IR_RxData(low, 0); // decode low pulse
-
-  } else  if((TIM_GetFlagStatus(TIM4, TIM_FLAG_CC2) != RESET)) {
-
-    TIM_ClearFlag(TIM4, TIM_FLAG_CC2);
-    // Get the Input Capture value
-    high = TIM_GetCapture2(TIM4);
-
-    IR_RxData(high - low, 1); // decode high pulse
-
-  } else if ((TIM_GetFlagStatus(TIM4, TIM_FLAG_Update) != RESET)) {
-    // Clears the IR_TIM's pending flags
-    TIM_ClearFlag(TIM4, TIM_FLAG_Update);
-
-    // If timeout occurs, clear frame state.
-    bitCount = 13;
-    pulseCount = 0;
-  }
-
+void IR_ResetFrame(void) {
+  bitCount = 13;
+  pulseCount = 0;
 }
+
 
 /**
  * @}
